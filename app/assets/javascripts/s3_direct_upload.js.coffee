@@ -20,21 +20,33 @@ $.fn.S3Uploader = (options) ->
     before_add: null
     remove_completed_progress_bar: true
     remove_failed_progress_bar: false
+    progress_bar_target: null
+    click_submit_target: null
 
   $.extend settings, options
 
   current_files = []
+  forms_for_submit = []
+  if settings.click_submit_target
+    settings.click_submit_target.click ->
+      form.submit() for form in forms_for_submit
+      false
 
   setUploadForm = ->
     $uploadForm.fileupload
 
       add: (e, data) ->
-        current_files.push data
         file = data.files[0]
+        file.unique_id = Math.random().toString(36).substr(2,16)
+
         unless settings.before_add and not settings.before_add(file)
-          data.context = $(tmpl("template-upload", file)) if $('#template-upload').length > 0
-          $uploadForm.append(data.context)
-          data.submit()
+          current_files.push data
+          data.context = $($.trim(tmpl("template-upload", file))) if $('#template-upload').length > 0
+          $(data.context).appendTo(settings.progress_bar_target || $uploadForm)
+          if settings.click_submit_target
+           forms_for_submit.push data
+          else
+            data.submit()
 
       start: (e) ->
         $uploadForm.trigger("s3_uploads_start", [e])
@@ -46,12 +58,12 @@ $.fn.S3Uploader = (options) ->
       done: (e, data) ->
         content = build_content_object $uploadForm, data.files[0], data.result
 
-        to = $uploadForm.data('post')
+        to = $uploadForm.data('callback-url')
         if to
-          content[$uploadForm.data('as')] = content.url
+          content[$uploadForm.data('callback-param')] = content.url
 
           $.ajax
-            type: 'POST'
+            type: $uploadForm.data('callback-method')
             url: to
             data: content
             beforeSend: ( xhr, settings )       -> $uploadForm.trigger( 'ajax:beforeSend', [xhr, settings] )
@@ -99,6 +111,7 @@ $.fn.S3Uploader = (options) ->
     content.filename   = file.name
     content.filesize   = file.size if 'size' of file
     content.filetype   = file.type if 'type' of file
+    content.unique_id  = file.unique_id if 'unique_id' of file
     content = $.extend content, settings.additional_data if settings.additional_data
     content
 
